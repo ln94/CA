@@ -30,8 +30,8 @@
 
 
 <input type = "text" id = "field" class = "custom" size = "100" autofocus>
-<input type = "button" id = "parse_but" onclick = "Parse()" value = "Parse">
-<input type = "button" id = "reset_but" onclick = "Clear()" value = "Erase">
+<input type = "button" id = "parse_but" onclick = "Parse()" value = "Parse It">
+<input type = "button" id = "reset_but" onclick = "Clear()" value = "Clear">
 <p id = "output" ></p>
 
 <script>
@@ -72,7 +72,6 @@ $(document).ready(function(){
 	return ((c == '+') || (c == '-') || (c == '*') || (c == '/') || (c == "^"))
  }
  
- 
  function isCorrect (c){
 	return (isAlpha(c) || isDigit(c) || isMath(c) || isBracket(c) || (c == '.'));
  }
@@ -94,39 +93,46 @@ function Parse() {
     d3.select("svg").remove();
     document.getElementById("output").innerHTML = '';
     var expr = document.getElementById("field").value;
-	//expr = deleteSpaces(expr)
+	expr = deleteSpaces(expr)
 	//if (expr[0] =='-')
-		//expr='0'+expr;
-		
+		//expr='0'+expr;	
 	var errorMessage = expr;
-    var expr2 = expr;
     var correctExpr = true;
 	
-//  check expression
-	correctExpr = ((isAlpha(expr[0])|| isDigit(expr[0])));
+//  simple check expression
+	//correctExpr = ((isAlpha(expr[0])|| isDigit(expr[0])));
     var brackStack = [];
     for (i = 0; (i < expr.length) && correctExpr; i++) {
-	var c;
+		var c;
         if (!isCorrect(expr[i])) {//check symbols
-            errorMessage = "Unexpected symbol: "+expr[i];
+            errorMessage = "Error: Unexpected symbol [" + (i+1).toString() + "]: "+expr[i];
             correctExpr = false;
             break;
         }
 
 		//check brackets
         if (isOpenBracket(expr[i])) {
-            brackNumber++;
             brackStack.push(expr[i]);
-			if ((i == (expr.length - 1)) || !(isAlpha(expr[i+1]) || isDigit(expr[i+1]))){
-				errorMessage = "Unexpected bracket: "+expr[i+1];
+			if ((i == (expr.length - 1)) || !(isAlpha(expr[i+1]) || isDigit(expr[i+1]) || (expr[i+1] == '.') || (expr[i+1] == '-'))){ //"(.5" means "(0.5"
+				errorMessage = "Error: Unexpected bracket [" + (i+2).toString() + "]: "+expr[i+1];
+				correctExpr = false;
+				break;
+			}
+			if ((i!= 0) &&( !isMath(expr[i-1]))) {
+				errorMessage = "Error: Unexpected symbol [" + i.toString() + "]: "+expr[i-1];
 				correctExpr = false;
 				break;
 			}
 				
         }
         if (isCloseBracket(expr[i])){
-			if ((brackStack.length == 0) || !(isAlpha(expr[i-1]) || isDigit(expr[i-1]))) {
-				errorMessage = "Unexpected symbol: "+expr[i];
+			if ((brackStack.length == 0) || !(isAlpha(expr[i-1]) || isDigit(expr[i-1]) || (expr[i-1] == '.'))) { //"1." means "1.0"
+				errorMessage = "Error: Unexpected symbol [" + (i+1).toString() + "]: "+expr[i];
+				correctExpr = false;
+				break;
+			}
+			if ((i != (expr.length - 1)) &&( !isMath(expr[i+1]))) {
+				errorMessage = "Error: Unexpected symbol [" + (i+2).toString() + "]: "+expr[i+1];
 				correctExpr = false;
 				break;
 			}
@@ -134,19 +140,19 @@ function Parse() {
 			switch (expr[i]){
 				case ')':							
 					if (c != '(') {
-						errorMessage = "Unexpected bracket: "+expr[i];
+						errorMessage = "Error: Unexpected bracket [" + (i+1).toString() + "]: "+expr[i];
 						correctExpr = false;
 					}				
 					break;
 				case ']':							
 					if (c != '[') {
-						errorMessage = "Unexpected bracket: "+expr[i];
+						errorMessage = "Error: Unexpected bracket [" + (i+1).toString() + "]: "+expr[i];
 						correctExpr = false;
 					}				
 					break;
 				case '}':							
 					if (c != '{') {
-						errorMessage = "Unexpected bracket: "+expr[i];
+						errorMessage = "Error: Unexpected bracket [" + (i+1).toString() + "]: "+expr[i];
 						correctExpr = false;
 					}				
 					break;	
@@ -155,176 +161,156 @@ function Parse() {
 				break;
 		}
     }
-    if (brackStack.length > 0) {
-        errorMessage = "unclosed brackets: "+brackStack.pop();
+    if ((correctExpr) && (brackStack.length > 0)) {
+        errorMessage = "Error: Unclosed brackets: "+brackStack.pop();
         correctExpr = false;
     }
+	if ((correctExpr) && (isMath(expr[expr.length - 1]) || (isMath(expr[0]) && (expr[0] != '-')))){
+        errorMessage = "Error: Unexpected symbol [" + (expr.length - 1).toString() + "]: " + expr[expr.length - 1];
+        correctExpr = false;
+	}
 
-//  check variables
-    if (correctExpr == true)
+//  full check and make RPN
+	var RPN = []
+	//type == 1 -> operator
+	//type == 0 -> value
+    if (correctExpr == true){
+		var mathStack = [];
         for (i = 0; i < expr.length; i++) {
+		
+			//math operator or openBracket
+			if (isMath(expr[i]) || isOpenBracket(expr[i])){
+				if (isMath(expr[i+1])) {
+						if (! (isOpenBracket(expr[i]) && (expr[i+1] == '-'))){//"(-1)" is allowable
+							errorMessage = "Error: Unexpected symbol [" + (i+2).toString() + "]: "+expr[i + 1];
+							correctExpr = false;
+							break;
+						}
+                }
+				switch (expr[i]){
+					case '^':
+						while ( mathStack.length && (mathStack[mathStack.length-1] == '^')){
+							var c = mathStack.pop();
+							RPN.push({"name":c, "parent":-1, "child_count":0, "type":1});
+						}
+						break;
+					case '*':
+					case '/':
+						while ( mathStack.length && ((mathStack[mathStack.length-1] == '*') || (mathStack[mathStack.length-1] == '/') || (mathStack[mathStack.length-1] == '^'))){
+							var c = mathStack.pop();
+							RPN.push({"name":c, "parent":-1, "child_count":0, "type":1});
+						}
+						break
+					case '-':
+						if ((i == 0) || (expr[i-1] =='(')) //"(-1..."  -> "(0-1..."
+							RPN.push({"name":0, "parent":-1, "child_count":0, "type":0});
+					case '+':
+						while ( mathStack.length && isMath(mathStack[mathStack.length-1])){
+							var c = mathStack.pop();
+							RPN.push({"name":c, "parent":-1, "child_count":0, "type":1});
+						}
+						break;
+					default: //open bracket
+						break;
+				}
+				mathStack.push(expr[i]);
+				continue;
+			}
+			
+			//Close bracket
+			if (isCloseBracket(expr[i])){
+				var c =  mathStack.pop();
+				while (! isOpenBracket(c)){
+					RPN.push({"name":c, "parent":-1, "child_count":0, "type":1});
+					c =  mathStack.pop(); 
+				}
+				continue;
+			}
+			
+			//symbolic variable.  possible: x ( \+ | - | \* | / | ^ | \) | \0 )
             if (isAlpha(expr[i])) {
-                if (i != expr.length - 1) {
-                    if (isMath(expr[i + 1]))
-                        expr2 = expr2.replace(expr2[i], "_");
-                    else {
-                        errorMessage = "unexpected symbol: "+expr[i + 1];
+                if ((i != expr.length - 1) && !(isMath(expr[i + 1]) || isCloseBracket(expr[i + 1]))){
+                        errorMessage = "Error: Unexpected symbol [" + (i+2).toString() + "]: "+expr[i + 1];
                         correctExpr = false;
                         break;
-                    }
                 }
-                else
-                    expr2 = expr2.replace(expr2[i], "_");
+				RPN.push({"name": expr[i], "parent":-1, "child_count":0, "type":0});
             }
-
-            if (isAlpha(expr[i])) {
-                if (i != expr.length - 1) {
-                    if (isMath(expr[i + 1]) || isAlpha(expr[i+1]))
-                        expr2 = expr2.replace(expr2[i], "_");
-                    else {
-                        errorMessage = "unexpected symbol: "+expr[i + 1];
-                        correctExpr = false;
-                        break;
-                    }
-                }
-                else
-                    expr2 = expr2.replace(expr2[i], "_");
-            }
+			
+			//numeric value. Possible: ( 0 | ... | 9)* .? ( 0 | ... | 9)* ( \+ | - | \* | / | ^ | \) | \0 )
+			var dot = false;//one dot in one number
+			var num = "";
+			while ((i < expr.length) && (isDigit(expr[i]) || (expr[i]=='.'))){
+				if (expr[i] =='.'){
+					if (dot){
+						errorMessage = "Error: Unexpected symbol [" + (i+1).toString() + "]: "+expr[i];
+						correctExpr = false;
+						break;					
+					}
+					dot = true;
+					if (!num.length)//==0
+						num="0";
+					num+=".";
+				}
+				else{
+					num+=expr[i];				
+				}
+				i++; //line 248
+			}
+			if (!correctExpr)
+				break;
+			if (num[num.length - 1] == '.')
+				num+="0";
+			if (i < expr.length){
+				if (isAlpha(expr[i])){
+					errorMessage = "Error: Unexpected symbol [" + (i+1).toString() + "]: "+expr[i];
+					correctExpr = false;
+					break;		
+				}
+				i--;//crutch for line 248
+			}
+			RPN.push ({"name":num, "parent":-1, "child_count":0, "type":0});
         }
-
-//  check math symbols
-    if (correctExpr == true)
-        for (i = 0; i < expr.length; i++) {
-            if (isMath(expr2[i])) 
-                if ((i == 0) || (i == (expr.length - 1)) || isMath(expr2[i-1]) || isMath(expr2[i+1])) {
-                    errorMessage = "unexpected symbol: "+expr[i];
-                    correctExpr = false;
-                    break;
-                }
-        }
-
-// parse
-    var arr = [];
-    var var_cont = 0;
-    for (i = 0; i < expr2.length; i++) {
-        if (expr2[i] != '_') {
-            arr.push(expr2[i]);
-            var_cont = 0;
-        }
-        else {
-            if (var_cont == 1)
-                arr[arr.length - 1] = arr[arr.length - 1] + expr[i];
-            else {
-                arr.push(expr[i]);
-                var_cont = 1;
-            }
-        }
-
-    }
-
-    var arr2 = [];
-    var brackNumber = 0;
-    var max_level = 0;
-    for (i = 0; i < arr.length; i++) {
-        if (isOpenBracket(arr[i])) {
-            arr2[i] = { "name": "(", "ready": 0, "level": -1};
-            brackNumber++;
-            if (brackNumber > max_level)
-                max_level = brackNumber;
-        }
-        else if (isCloseBracket(arr[i])) {
-            arr2[i] = { "name": ")", "ready": 0, "level": -1};
-            brackNumber--;
-        }
-        else if (isMath(arr[i]))
-            arr2[i] = { "name": arr[i], "ready": 0, "used": 0, "level": brackNumber, "order": 0};
-        else
-            arr2[i] = { "name": arr[i], "ready": 1, "used": 0, "level": -1};
-    }
-
-    var order = 1;
-    var power_not_found = 0, mult_not_found = 0, plus_not_found = 0;
-    var oper_found;
-    do {
-        oper_found = 0;
-        if (power_not_found == 0) {
-            for (i = 0; i < arr2.length; i++) {
-                if (arr2[i].level == max_level && arr2[i].order == 0)
-                    if (arr2[i].name == '^') {
-                        arr2[i].order = order;
-                        order++;
-                        oper_found = 1;
-                    }
-            }
-            if (oper_found == 0)
-                power_not_found = 1;
-        }
-        else if (mult_not_found == 0) {
-            for (i = 0; i < arr2.length; i++) {
-                if (arr2[i].level == max_level && arr2[i].order == 0)
-                    if (arr2[i].name == '*' || arr2[i].name == '/') {
-                        arr2[i].order = order;
-                        order++;
-                        oper_found = 1;
-                    }
-            }
-            if (oper_found == 0)
-                mult_not_found = 1;
-        }
-        else if (plus_not_found == 0) {
-            for (i = 0; i < arr2.length; i++) {
-                if (arr2[i].level == max_level && arr2[i].order == 0)
-                    if (arr2[i].name == '+' || arr2[i].name == '-') {
-                        arr2[i].order = order;
-                        order++;
-                        oper_found = 1;
-                    }
-            }
-            if (oper_found == 0)
-                plus_not_found = 1;
-        }
-        else {
-            max_level--;
-            power_not_found = 0;
-            mult_not_found = 0;
-            plus_not_found = 0;
-        }
-    } while (max_level > -1);
-
-    var root_num;
-    for (i = 0; i < arr2.length; i++)
-        if (arr2[i].order == order - 1) {
-            root_num = i;
-            break;
-        }
-
-
-// build tree
-    var parent, left, right;
-    for (i = 1; i < order; i++) {
-        parent = left = right = 0;
-        for (p = 0; p < arr2.length; p++)                // parent
-            if (arr2[p].order == i) {
-                parent = p;
-                for (l = p - 1; l >= 0; l--)                 // left
-                    if (arr2[l].ready == 1) {
-                        left = l;
-                        break;
-                    }
-                for (r = p + 1; p < arr2.length; r++)        // right
-                    if (arr2[r].ready == 1) {
-                        right = r;
-                        break;
-                    }
-                arr2[parent].children = [arr2[left], arr2[right]];
-                arr2[parent].ready = 1;
-                arr2[left].ready = 0;
-                arr2[right].ready = 0;
-                break;
-            }
-    }
+		while (mathStack.length){
+			var c = mathStack.pop()
+			RPN.push({"name":c, "parent":-1, "child_count":0, "type":1});
+		}
+	}
 	
-	 if (!correctExpr)
+	//build tree;
+	var curr = RPN.length-2;
+	var currDad = RPN.length-1;
+	while (curr >= 0){
+		switch (RPN[curr].type){
+			case 0://value
+				(RPN[currDad].children || (RPN[currDad].children = [])).unshift(RPN[curr]);
+				RPN[currDad].child_count++;
+				RPN[curr].parent = currDad;
+				RPN[curr].child_count = 2;//value can't have children
+				break;
+			case 1://operator
+				(RPN[currDad].children || (RPN[currDad].children = [])).unshift(RPN[curr]);
+				RPN[currDad].child_count++;
+				RPN[curr].parent = currDad;
+				currDad=curr;
+				break;
+			default:
+				errorMessage = "status 500: Internal server error";
+				correctExpr = false;
+				break;
+		}
+		while ((currDad != -1) && (RPN[currDad].child_count == 2)){
+			currDad = RPN[currDad].parent;
+			if ((currDad == -1) && (curr != 0)){
+				errorMessage = "status 500: Internal server error";
+				correctExpr = false;
+				break;
+			}
+		}
+		curr--;
+	}
+	
+	if (!correctExpr)
         document.getElementById("output").innerHTML = errorMessage;
 
 
@@ -348,7 +334,7 @@ function Parse() {
             .append("g")
             .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-    root = arr2[root_num];
+    root = RPN[RPN.length-1];
     update(root);
 
     function update(source) {
