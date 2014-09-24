@@ -92,6 +92,7 @@ function deleteSpaces(expr){
  
 function Parse() {
     d3.select("svg").remove();
+	document.getElementById("output").style.color = 'red';
     document.getElementById("output").innerHTML = '';
     var expr = document.getElementById("field").value;
 	expr = deleteSpaces(expr)
@@ -114,12 +115,12 @@ function Parse() {
 		//check brackets
         if (isOpenBracket(expr[i])) {
             brackStack.push(expr[i]);
-			if ((i == (expr.length - 1)) || !(isAlpha(expr[i+1]) || isDigit(expr[i+1]) || (expr[i+1] == '.') || (expr[i+1] == '-'))){ //"(.5" means "(0.5"
+			if (i == (expr.length - 1) ||  !(isAlpha(expr[i+1]) || isDigit(expr[i+1]) || isOpenBracket(expr[i+1]) || (expr[i+1] == '.') || (expr[i+1] == '-'))){ //"(.5" means "(0.5"{
 				errorMessage = "Error: Unexpected bracket [" + (i+2).toString() + "]: "+expr[i+1];
 				correctExpr = false;
 				break;
 			}
-			if ((i!= 0) &&( !isMath(expr[i-1]))) {
+			if ((i!= 0) && !(isMath(expr[i-1]) || isOpenBracket(expr[i-1]))) {
 				errorMessage = "Error: Unexpected symbol [" + i.toString() + "]: "+expr[i-1];
 				correctExpr = false;
 				break;
@@ -127,12 +128,12 @@ function Parse() {
 				
         }
         if (isCloseBracket(expr[i])){
-			if ((brackStack.length == 0) || !(isAlpha(expr[i-1]) || isDigit(expr[i-1]) || (expr[i-1] == '.'))) { //"1." means "1.0"
+			if ((brackStack.length == 0) ||  !(isAlpha(expr[i-1]) || isDigit(expr[i-1]) || (expr[i-1] == '.') || isCloseBracket(expr[i-1]))){ //"1." means "1.0"; i==0 equal that brackstack is empty
 				errorMessage = "Error: Unexpected symbol [" + (i+1).toString() + "]: "+expr[i];
 				correctExpr = false;
 				break;
-			}
-			if ((i != (expr.length - 1)) &&( !isMath(expr[i+1]))) {
+			}			
+			if ((i != (expr.length - 1)) && !(isMath(expr[i+1]) || isCloseBracket(expr[i+1]))) {
 				errorMessage = "Error: Unexpected symbol [" + (i+2).toString() + "]: "+expr[i+1];
 				correctExpr = false;
 				break;
@@ -314,7 +315,6 @@ function Parse() {
 	
 	if (!correctExpr)
         document.getElementById("output").innerHTML = errorMessage;
-
 
 // ************** Generate the tree diagram *****************
     var margin = {top: 30, right: 0, bottom: 0, left: 0},
